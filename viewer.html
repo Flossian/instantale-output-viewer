@@ -106,7 +106,6 @@ let searchTimer = null;
 const $ = s => document.querySelector(s);
 const main = $("#main"), side = $("#side");
 
-const supported = typeof window.showDirectoryPicker === "function";
 showWelcome();
 
 $("#reopen").onclick = pickFolder;
@@ -123,29 +122,18 @@ function showWelcome(){
     <p>下のボタンを押して <b>output_data</b> フォルダを選択してください。<br>
        フォルダ内の JSON を直接読み込みます（サーバ不要・データは外部に送信されません）。</p>
     <p><button class="btn" id="pickBtn">📁 output_data フォルダを選択</button></p>
-    <p style="font-size:12px">Chrome / Edge / Firefox / Safari など主要ブラウザに対応しています。${supported ? "" : `<br>
-       （このブラウザではフォルダ選択ダイアログで output_data を選んでください）`}</p>
+    <p style="font-size:12px">Chrome / Edge / Firefox / Safari など主要ブラウザに対応しています。<br>
+       フォルダ選択ダイアログで <b>output_data</b> フォルダを選んでください。</p>
   </div>`;
   const b = $("#pickBtn"); if(b) b.onclick = pickFolder;
 }
 
-async function pickFolder(){
-  if(supported){
-    let dir;
-    try{ dir = await window.showDirectoryPicker(); }
-    catch(e){
-      if(e && e.name === "AbortError") return; // ユーザーがキャンセル
-      // file:// などで使用できない場合は input にフォールバック
-      $("#dirInput").value = ""; $("#dirInput").click(); return;
-    }
-    showLoading();
-    try{ await scanDirectory(dir); onLoaded(); }
-    catch(e){ showError(e); }
-  }else{
-    // Firefox / Safari など: <input webkitdirectory> でフォルダ選択
-    $("#dirInput").value = "";
-    $("#dirInput").click();
-  }
+function pickFolder(){
+  // 全ブラウザ共通: <input webkitdirectory> でフォルダ選択
+  // （showDirectoryPicker は Program Files 等のシステムフォルダを
+  //   ブロックするため、Chrome/Edge でも input 方式に統一する）
+  $("#dirInput").value = "";
+  $("#dirInput").click();
 }
 
 $("#dirInput").addEventListener("change", async (e)=>{
@@ -167,24 +155,7 @@ function showError(e){
   $("#pickBtn2").onclick = pickFolder;
 }
 
-// ---- FS Access API (Chrome/Edge): ハンドルを再帰収集 ----
-async function scanDirectory(rootHandle){
-  const collected = [];
-  async function walk(handle, segs){
-    for await (const entry of handle.values()){
-      if(entry.kind === "directory"){
-        await walk(entry, segs.concat(entry.name));
-      }else if(entry.name.toLowerCase().endsWith(".json")){
-        const h = entry;
-        collected.push({segs: segs.concat(entry.name), read: ()=>h.getFile().then(f=>f.text())});
-      }
-    }
-  }
-  await walk(rootHandle, []);
-  await buildFromCollected(collected);
-}
-
-// ---- <input webkitdirectory> (Firefox/Safari ほか): FileList から収集 ----
+// ---- <input webkitdirectory> (全ブラウザ): FileList から収集 ----
 async function scanFileList(fileList){
   const collected = [];
   for(const f of fileList){
