@@ -38,14 +38,14 @@ output_data/
 
 ### `viewer.html` を開く（ビルド不要）
 
-1. このリポジトリをダウンロード（または `git clone`）。
+1. Releaseのzipをダウンロード、好きな場所に解凍する。
 2. `viewer.html` をブラウザで開く（**Chrome / Edge / Firefox / Safari** など主要ブラウザに対応）。
 3. 「📁 output_data フォルダを選択」を押し、自分の `output_data` フォルダを選ぶ。
 
 - Python 不要・サーバ不要。データは外部に送信されません（すべてブラウザ内で処理）。
 - Chrome / Edge では File System Access API を、Firefox / Safari などでは
   `<input webkitdirectory>` によるフォルダ選択を自動で使い分けます。
-- データを更新したら、フォルダを選び直すだけで最新が反映されます。
+- データが更新されたら、フォルダを選び直すだけで最新が反映されます。
 
 ---
 
