@@ -36,10 +36,22 @@ output_data/
 
 ## 使い方
 
-### `viewer.html` を開く（ビルド不要）
+### A. ブラウザで直接開く（おすすめ・ダウンロード不要）
 
-1. Releaseのzipをダウンロード、好きな場所に解凍する。
-2. `viewer.html` をブラウザで開く（**Chrome / Edge / Firefox / Safari** など主要ブラウザに対応）。
+GitHub Pages で公開しているので、次のURLを開くだけで使えます:
+
+**<https://flossian.github.io/instantale-output-viewer/>**
+
+1. 上記URLをブラウザで開く（**Chrome / Edge / Firefox / Safari** など主要ブラウザに対応）。
+2. 「📁 output_data フォルダを選択」を押し、自分の `output_data` フォルダを選ぶ。
+
+> HTTPS 配信のため File System Access API も問題なく動作します。
+> ページのコード以外は何も読み込まれず、**`output_data` の中身は外部に送信されません**（すべてブラウザ内で処理）。
+
+### B. ファイルをローカルで開く（オフライン）
+
+1. `index.html` をダウンロード（または Release のzipを解凍）して、好きな場所に置く。
+2. `index.html` をブラウザで開く。
 3. 「📁 output_data フォルダを選択」を押し、自分の `output_data` フォルダを選ぶ。
 
 - Python 不要・サーバ不要。データは外部に送信されません（すべてブラウザ内で処理）。
