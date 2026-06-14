@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>output_data ビューア</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1f2430; --line:#2a3040;
+    --fg:#e6e9ef; --muted:#8b93a7; --accent:#5b9cff; --accent2:#ffb454;
+    --user:#1d3a5f; --asst:#2d2440; --sys:#22262f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Meiryo,system-ui,sans-serif;
+       background:var(--bg);color:var(--fg);height:100vh;display:flex;flex-direction:column}
+  header{padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  header .total{color:var(--muted);font-size:12px}
+  #search{flex:1;min-width:180px;max-width:420px;background:var(--panel2);border:1px solid var(--line);
+          color:var(--fg);padding:7px 10px;border-radius:6px;font-size:13px}
+  .tab{background:none;border:1px solid var(--line);color:var(--muted);padding:6px 12px;
+       border-radius:6px;cursor:pointer;font-size:12px}
+  .tab.active{color:var(--fg);border-color:var(--accent);background:var(--panel2)}
+  .btn{background:var(--accent);border:none;color:#fff;padding:7px 14px;border-radius:6px;
+       cursor:pointer;font-size:13px;font-weight:600}
+  .layout{flex:1;display:flex;min-height:0}
+  #side{width:300px;min-width:240px;background:var(--panel);border-right:1px solid var(--line);
+        overflow:auto;padding:8px}
+  #main{flex:1;overflow:auto;padding:16px}
+  .row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;cursor:pointer;
+       font-size:13px;user-select:none}
+  .row:hover{background:var(--panel2)}
+  .row.sel{background:var(--accent);color:#fff}
+  .row .cnt{margin-left:auto;color:var(--muted);font-size:11px}
+  .row.sel .cnt{color:#dfe9ff}
+  .tw{font-weight:600}
+  .tc{padding-left:16px}
+  .tcat{padding-left:32px;color:var(--muted)}
+  .caret{width:12px;display:inline-block;text-align:center;color:var(--muted);font-size:10px}
+  .hidden{display:none}
+  .crumb{color:var(--muted);font-size:12px;margin-bottom:12px}
+  .crumb b{color:var(--fg)}
+  .file{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+        margin-bottom:8px;cursor:pointer}
+  .file:hover{border-color:var(--accent)}
+  .file .fhead{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+  .file .fid{color:var(--accent2);font-weight:600}
+  .file .fprev{margin-top:5px;font-size:13px;color:var(--fg);line-height:1.5}
+  .msg{border-radius:8px;padding:10px 12px;margin-bottom:8px;white-space:pre-wrap;
+       font-size:13px;line-height:1.6;border:1px solid var(--line)}
+  .msg .role{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+             margin-bottom:5px;font-weight:600}
+  .msg.system{background:var(--sys)}
+  .msg.user{background:var(--user)}
+  .msg.assistant{background:var(--asst)}
+  .respbox{background:#11261a;border:1px solid #1f5137;border-radius:8px;padding:12px;margin-top:6px}
+  pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:Consolas,monospace;font-size:12.5px}
+  .secttitle{font-size:12px;color:var(--muted);margin:14px 0 6px;border-bottom:1px solid var(--line);
+             padding-bottom:4px}
+  .backbtn{background:var(--panel2);border:1px solid var(--line);color:var(--fg);padding:6px 12px;
+           border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:12px}
+  .sysfold{cursor:pointer;color:var(--accent)}
+  .cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;min-width:140px}
+  .card .num{font-size:26px;font-weight:700;color:var(--accent)}
+  .card .lbl{font-size:12px;color:var(--muted);margin-top:2px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin:3px 0;font-size:12px;cursor:pointer}
+  .bar-row:hover .bar-label{color:var(--fg)}
+  .bar-label{width:230px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-track{flex:1;background:var(--panel2);border-radius:4px;height:16px}
+  .bar-fill{background:linear-gradient(90deg,var(--accent),#7b6cff);height:100%;border-radius:4px}
+  .bar-val{width:46px;color:var(--fg)}
+  h2{font-size:14px;margin:18px 0 8px}
+  .welcome{max-width:620px;margin:8vh auto;text-align:center}
+  .welcome h2{font-size:20px}
+  .welcome p{color:var(--muted);line-height:1.7;font-size:13px}
+  .progress{max-width:520px;margin:14px auto 0;background:var(--panel2);border-radius:6px;height:10px;overflow:hidden}
+  .progress > div{height:100%;background:var(--accent);width:0%}
+  .warn{color:#ffb454}
+</style>
+</head>
+<body>
+<header>
+  <h1>output_data ビューア</h1>
+  <span class="total" id="totalLabel"></span>
+  <button class="tab active hidden" id="tabBrowse">ブラウズ</button>
+  <button class="tab hidden" id="tabDash">ダッシュボード</button>
+  <input id="search" class="hidden" placeholder="全文検索 (本文まで・絞り込み中の範囲)…">
+  <button class="btn hidden" id="reopen">別フォルダを開く</button>
+</header>
+<div class="layout">
+  <aside id="side" class="hidden"></aside>
+  <main id="main"></main>
+</div>
+<input type="file" id="dirInput" webkitdirectory directory multiple style="display:none">
+
+<script>
+let MANIFEST = null;
+let READERS = new Map();      // path -> async () => JSONテキスト (FS API / file input 両対応)
+let SEARCH = new Map();       // path -> 本文の検索用テキスト(小文字)
+let sel = {world:null, char:null, cat:null};
+let mode = "browse";
+let searchTimer = null;
+
+const $ = s => document.querySelector(s);
+const main = $("#main"), side = $("#side");
+
+const supported = typeof window.showDirectoryPicker === "function";
+showWelcome();
+
+$("#reopen").onclick = pickFolder;
+$("#tabBrowse").onclick = ()=>{ mode="browse"; setTab(); renderMain(); };
+$("#tabDash").onclick   = ()=>{ mode="dash";   setTab(); renderMain(); };
+$("#search").addEventListener("input", ()=>{
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(()=>{ if(mode==="browse") renderFileList(); }, 160);
+});
+
+function showWelcome(){
+  main.innerHTML = `<div class="welcome">
+    <h2>output_data ビューア</h2>
+    <p>下のボタンを押して <b>output_data</b> フォルダを選択してください。<br>
+       フォルダ内の JSON を直接読み込みます（サーバ不要・データは外部に送信されません）。</p>
+    <p><button class="btn" id="pickBtn">📁 output_data フォルダを選択</button></p>
+    <p style="font-size:12px">Chrome / Edge / Firefox / Safari など主要ブラウザに対応しています。${supported ? "" : `<br>
+       （このブラウザではフォルダ選択ダイアログで output_data を選んでください）`}</p>
+  </div>`;
+  const b = $("#pickBtn"); if(b) b.onclick = pickFolder;
+}
+
+async function pickFolder(){
+  if(supported){
+    let dir;
+    try{ dir = await window.showDirectoryPicker(); }
+    catch(e){
+      if(e && e.name === "AbortError") return; // ユーザーがキャンセル
+      // file:// などで使用できない場合は input にフォールバック
+      $("#dirInput").value = ""; $("#dirInput").click(); return;
+    }
+    showLoading();
+    try{ await scanDirectory(dir); onLoaded(); }
+    catch(e){ showError(e); }
+  }else{
+    // Firefox / Safari など: <input webkitdirectory> でフォルダ選択
+    $("#dirInput").value = "";
+    $("#dirInput").click();
+  }
+}
+
+$("#dirInput").addEventListener("change", async (e)=>{
+  const files = e.target.files;
+  if(!files || !files.length) return;
+  showLoading();
+  try{ await scanFileList(files); onLoaded(); }
+  catch(err){ showError(err); }
+});
+
+function showLoading(){
+  main.innerHTML = `<div class="welcome"><h2>読み込み中…</h2>
+    <p id="progText">フォルダを走査しています…</p>
+    <div class="progress"><div id="progBar"></div></div></div>`;
+}
+function showError(e){
+  main.innerHTML = `<div class="welcome"><h2 class="warn">読み込みエラー</h2><p>${esc(e.message)}</p>
+    <p><button class="btn" id="pickBtn2">再試行</button></p></div>`;
+  $("#pickBtn2").onclick = pickFolder;
+}
+
+// ---- FS Access API (Chrome/Edge): ハンドルを再帰収集 ----
+async function scanDirectory(rootHandle){
+  const collected = [];
+  async function walk(handle, segs){
+    for await (const entry of handle.values()){
+      if(entry.kind === "directory"){
+        await walk(entry, segs.concat(entry.name));
+      }else if(entry.name.toLowerCase().endsWith(".json")){
+        const h = entry;
+        collected.push({segs: segs.concat(entry.name), read: ()=>h.getFile().then(f=>f.text())});
+      }
+    }
+  }
+  await walk(rootHandle, []);
+  await buildFromCollected(collected);
+}
+
+// ---- <input webkitdirectory> (Firefox/Safari ほか): FileList から収集 ----
+async function scanFileList(fileList){
+  const collected = [];
+  for(const f of fileList){
+    if(!f.name.toLowerCase().endsWith(".json")) continue;
+    let segs = (f.webkitRelativePath || f.name).split("/").filter(Boolean);
+    if(segs.length > 1) segs = segs.slice(1); // 先頭(選択したフォルダ名)を除去
+    collected.push({segs, read: ()=>f.text()});
+  }
+  await buildFromCollected(collected);
+}
+
+// ---- 収集済みファイルからマニフェスト構築 + プレビュー/検索テキスト読み込み ----
+async function buildFromCollected(collected){
+  READERS = new Map();
+  SEARCH = new Map();
+  const total = collected.length;
+  const pt0 = $("#progText"); if(pt0) pt0.textContent = `${total} 件の JSON を検出。プレビューを生成中…`;
+
+  const worlds = {}, categoryTotals = {};
+  let done = 0;
+  const CONC = 24;
+  for(let i=0; i<collected.length; i+=CONC){
+    const batch = collected.slice(i, i+CONC);
+    await Promise.all(batch.map(async item=>{
+      const segs = item.segs;
+      // 末尾=ファイル名。手前3つを world/char/cat とみなす(無ければプレースホルダ)
+      const fname = segs[segs.length-1];
+      const dirs = segs.slice(0, -1);
+      const world = dirs[0] || "(直下)";
+      const char  = dirs[1] || "(なし)";
+      const cat   = dirs[2] || "(なし)";
+      const path  = segs.join("/");
+      READERS.set(path, item.read);
+
+      let preview = "";
+      try{
+        const data = JSON.parse(await item.read());
+        preview = makePreview(data);
+        SEARCH.set(path, fileSearchText(data));
+      }catch(e){ preview = "[読み込みエラー]"; }
+
+      const w = worlds[world] || (worlds[world] = {count:0, characters:{}});
+      const c = w.characters[char] || (w.characters[char] = {count:0, categories:{}});
+      const ct = c.categories[cat] || (c.categories[cat] = {count:0, files:[]});
+      ct.files.push({n: fname.replace(/\.json$/i,""), path, preview});
+      ct.count++; c.count++; w.count++;
+      categoryTotals[cat] = (categoryTotals[cat]||0) + 1;
+    }));
+    done += batch.length;
+    const pct = total ? (done/total*100) : 100;
+    const pb = $("#progBar"); if(pb) pb.style.width = pct.toFixed(1)+"%";
+    const pt = $("#progText"); if(pt) pt.textContent = `プレビュー生成中… ${done} / ${total}`;
+  }
+
+  // 3) 並べ替え (ワールド/キャラ/カテゴリ名順、ファイルは数値順)
+  const numKey = s => { const m=/^(\d+)/.exec(s); return m?+m[1]:Number.MAX_SAFE_INTEGER; };
+  const sortObj = o => Object.fromEntries(Object.keys(o).sort((a,b)=>a.localeCompare(b,'ja')).map(k=>[k,o[k]]));
+  for(const w in worlds){
+    worlds[w].characters = sortObj(worlds[w].characters);
+    for(const c in worlds[w].characters){
+      worlds[w].characters[c].categories = sortObj(worlds[w].characters[c].categories);
+      for(const cat in worlds[w].characters[c].categories){
+        worlds[w].characters[c].categories[cat].files.sort((a,b)=>numKey(a.n)-numKey(b.n) || a.n.localeCompare(b.n));
+      }
+    }
+  }
+  MANIFEST = {
+    total,
+    worlds: sortObj(worlds),
+    categoryTotals: Object.fromEntries(Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1])),
+  };
+}
+
+function onLoaded(){
+  $("#totalLabel").textContent = MANIFEST.total.toLocaleString() + " 件";
+  ["#tabBrowse","#tabDash","#search","#reopen","#side"].forEach(s=>$(s).classList.remove("hidden"));
+  sel={world:null,char:null,cat:null}; mode="browse"; setTab();
+  renderTree(); renderMain();
+}
+
+function setTab(){
+  $("#tabBrowse").classList.toggle("active", mode==="browse");
+  $("#tabDash").classList.toggle("active", mode==="dash");
+}
+
+// ----- プレビュー抽出 (Python版と同等) -----
+function trim(s,n=140){ s=String(s).replace(/\s+/g," ").trim(); return s.length<=n?s:s.slice(0,n-1)+"…"; }
+function fileSearchText(data){
+  const parts=[];
+  for(const m of (data && data.messages || [])){
+    parts.push(typeof m.content==="string"?m.content:JSON.stringify(m.content));
+  }
+  parts.push(typeof (data&&data.response)==="string"?data.response:JSON.stringify(data&&data.response));
+  return parts.join("\n").toLowerCase();
+}
+function makePreview(data){
+  const resp = data && data.response;
+  if(resp==null) return "";
+  if(typeof resp==="string") return trim(resp);
+  if(typeof resp==="object"){
+    for(const k of ["text","statement","narration","summary","name","title"]){
+      if(typeof resp[k]==="string" && resp[k].trim()) return trim(resp[k]);
+    }
+    if(Array.isArray(resp.prompt)) return trim(resp.prompt.join(", "));
+    if(resp.action && typeof resp.action.statement==="string") return trim(resp.action.statement);
+    return trim(JSON.stringify(resp));
+  }
+  return trim(JSON.stringify(resp));
+}
+
+// ----- ツリー -----
+function renderTree(){
+  side.innerHTML = "";
+  const ws = MANIFEST.worlds;
+  for(const w of Object.keys(ws)){
+    const wd = ws[w];
+    const wEl = document.createElement("div");
+    const wRow = mkRow(w, wd.count, "tw");
+    const caret = document.createElement("span"); caret.className="caret"; caret.textContent="▸";
+    wRow.prepend(caret);
+    const charBox = document.createElement("div"); charBox.className="hidden";
+    let open=false;
+    wRow.onclick = ()=>{ open=!open; caret.textContent=open?"▾":"▸"; charBox.classList.toggle("hidden",!open); pick(w,null,null); };
+    wEl.appendChild(wRow);
+    for(const c of Object.keys(wd.characters)){
+      const cd = wd.characters[c];
+      const cRow = mkRow(c, cd.count, "tc");
+      const ccaret=document.createElement("span"); ccaret.className="caret"; ccaret.textContent="▸";
+      cRow.prepend(ccaret);
+      const catBox=document.createElement("div"); catBox.className="hidden";
+      let copen=false;
+      cRow.onclick=(e)=>{ e.stopPropagation(); copen=!copen; ccaret.textContent=copen?"▾":"▸"; catBox.classList.toggle("hidden",!copen); pick(w,c,null); };
+      charBox.appendChild(cRow);
+      for(const cat of Object.keys(cd.categories)){
+        const catd=cd.categories[cat];
+        const catRow=mkRow(cat, catd.count, "tcat");
+        catRow.onclick=(e)=>{ e.stopPropagation(); pick(w,c,cat); };
+        catBox.appendChild(catRow);
+      }
+      charBox.appendChild(catBox);
+    }
+    wEl.appendChild(charBox);
+    side.appendChild(wEl);
+  }
+}
+function mkRow(label,count,cls){
+  const r=document.createElement("div"); r.className="row "+cls;
+  const t=document.createElement("span"); t.textContent=label;
+  t.style.cssText="overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+  const c=document.createElement("span"); c.className="cnt"; c.textContent=count;
+  r.appendChild(t); r.appendChild(c); return r;
+}
+function pick(w,c,cat){ sel={world:w,char:c,cat:cat}; mode="browse"; setTab(); renderFileList(); }
+
+// ----- メイン -----
+function renderMain(){ if(mode==="dash"){ renderDash(); return; } renderFileList(); }
+
+function currentFiles(){
+  const out=[]; const ws=MANIFEST.worlds;
+  const wkeys = sel.world ? [sel.world] : Object.keys(ws);
+  for(const w of wkeys){ if(!ws[w]) continue;
+    const ckeys = sel.char ? [sel.char] : Object.keys(ws[w].characters);
+    for(const c of ckeys){ const cd=ws[w].characters[c]; if(!cd) continue;
+      const catkeys = sel.cat ? [sel.cat] : Object.keys(cd.categories);
+      for(const cat of catkeys){ const catd=cd.categories[cat]; if(!catd) continue;
+        for(const f of catd.files) out.push({...f, world:w, char:c, cat});
+      }
+    }
+  }
+  return out;
+}
+
+function renderFileList(){
+  let files=currentFiles();
+  const q=$("#search").value.trim().toLowerCase();
+  if(q) files=files.filter(f=>(SEARCH.get(f.path)||(f.preview||"").toLowerCase()).includes(q) || f.cat.toLowerCase().includes(q));
+  const crumb=[sel.world||"全ワールド", sel.char, sel.cat].filter(Boolean).join(" / ");
+  let html=`<div class="crumb"><b>${esc(crumb||"全件")}</b> — ${files.length} 件`+(q?` (「${esc(q)}」で絞込)`:``)+`</div>`;
+  if(files.length===0) html+=`<p style="color:var(--muted)">該当なし。左のツリーから選択してください。</p>`;
+  main.innerHTML=html;
+  const frag=document.createDocumentFragment();
+  for(const f of files.slice(0,2000)){
+    const el=document.createElement("div"); el.className="file";
+    el.innerHTML=`<div class="fhead"><span class="fid">#${esc(f.n)}</span>`
+      + (sel.cat?``:`<span>${esc(f.cat)}</span>`)
+      + (sel.char?``:`<span>· ${esc(f.world)}/${esc(f.char)}</span>`)
+      + `</div><div class="fprev">${esc(f.preview||"(プレビュー無し)")}</div>`;
+    el.onclick=()=>openFile(f); frag.appendChild(el);
+  }
+  main.appendChild(frag);
+  if(files.length>2000){
+    const more=document.createElement("p"); more.style.color="var(--muted)";
+    more.textContent=`… 先頭2000件のみ表示 (全${files.length}件)。検索やカテゴリで絞り込んでください。`;
+    main.appendChild(more);
+  }
+}
+
+async function openFile(f){
+  const read = READERS.get(f.path);
+  if(!read){ main.innerHTML=`<p class="warn">ファイルが見つかりません</p>`; return; }
+  try{
+    const data = JSON.parse(await read());
+    renderDetail(f, data);
+  }catch(e){ main.innerHTML=`<p class="warn">読み込み失敗: ${esc(e.message)}</p>`; }
+}
+
+function renderDetail(f,data){
+  main.innerHTML="";
+  const bar=document.createElement("div"); bar.style.cssText="display:flex;gap:8px;flex-wrap:wrap;align-items:center";
+  const back=document.createElement("button"); back.className="backbtn"; back.textContent="← 一覧へ戻る";
+  back.onclick=renderFileList; back.style.margin="0";
+  const toggleAll=document.createElement("button"); toggleAll.className="backbtn"; toggleAll.style.margin="0";
+  toggleAll.textContent="全て展開";
+  bar.appendChild(back); bar.appendChild(toggleAll);
+  bar.style.marginBottom="12px"; main.appendChild(bar);
+
+  const crumb=document.createElement("div"); crumb.className="crumb";
+  crumb.innerHTML=`<b>${esc(f.world)} / ${esc(f.char)} / ${esc(f.cat)} / #${esc(f.n)}</b>`;
+  main.appendChild(crumb);
+
+  const blocks=[];
+  const msgs=data.messages||[];
+  const t1=document.createElement("div"); t1.className="secttitle"; t1.textContent="入力 (messages)"; main.appendChild(t1);
+  msgs.forEach(m=>{
+    const content=typeof m.content==="string"?m.content:JSON.stringify(m.content,null,2);
+    const b=makeFoldable("msg "+(m.role||""), m.role||"?", content);
+    blocks.push(b); main.appendChild(b.el);
+  });
+
+  const t2=document.createElement("div"); t2.className="secttitle"; t2.textContent="出力 (response)"; main.appendChild(t2);
+  const respText=typeof data.response==="string"?data.response:JSON.stringify(data.response,null,2);
+  const rb=makeFoldable("respbox", "response", respText, true);
+  blocks.push(rb); main.appendChild(rb.el);
+
+  let allExpanded=false;
+  toggleAll.onclick=()=>{
+    allExpanded=!allExpanded;
+    blocks.forEach(b=>{ if(b.isLong){ allExpanded?b.expand():b.collapse(); } });
+    toggleAll.textContent=allExpanded?"全て折りたたむ":"全て展開";
+  };
+}
+
+// 折り畳み可能なブロック(メッセージ/response 共通)。長文(>300字)は既定で折り畳み。
+function makeFoldable(cls, label, content, mono){
+  const el=document.createElement("div"); el.className=cls;
+  const head=document.createElement("div"); head.className="role";
+  const body=document.createElement(mono?"pre":"div");
+  const LONG=content.length>300;
+  let collapsed=LONG;
+  const caret=document.createElement("span");
+  const text=document.createElement("span");
+  head.appendChild(caret); head.appendChild(text);
+  head.style.cursor=LONG?"pointer":"default";
+  head.style.userSelect="none";
+  function render(){
+    if(LONG && collapsed){ body.textContent=content.slice(0,300)+" …"; caret.textContent="▸ "; }
+    else{ body.textContent=content; caret.textContent=LONG?"▾ ":""; }
+    text.textContent=label.toUpperCase()+(LONG?`  (${content.length.toLocaleString()}文字)`:"");
+  }
+  head.onclick=()=>{ if(!LONG) return; collapsed=!collapsed; render(); };
+  el.appendChild(head); el.appendChild(body); render();
+  return { el, isLong:LONG, expand:()=>{collapsed=false;render();}, collapse:()=>{collapsed=true;render();} };
+}
+
+// ----- ダッシュボード -----
+function renderDash(){
+  const m=MANIFEST;
+  const nWorlds=Object.keys(m.worlds).length;
+  let nChars=0; const nCats=Object.keys(m.categoryTotals).length;
+  for(const w in m.worlds) nChars+=Object.keys(m.worlds[w].characters).length;
+  let html=`<div class="cards">
+    <div class="card"><div class="num">${m.total.toLocaleString()}</div><div class="lbl">総JSON数</div></div>
+    <div class="card"><div class="num">${nWorlds}</div><div class="lbl">ワールド</div></div>
+    <div class="card"><div class="num">${nChars}</div><div class="lbl">キャラクター</div></div>
+    <div class="card"><div class="num">${nCats}</div><div class="lbl">カテゴリ種別</div></div>
+  </div>`;
+  html+=`<h2>ワールド別 件数</h2>`;
+  html+=bars(Object.entries(m.worlds).map(([k,v])=>[k,v.count]).sort((a,b)=>b[1]-a[1]), "wbar");
+  html+=`<h2>カテゴリ別 件数</h2>`;
+  html+=bars(Object.entries(m.categoryTotals), "catbar");
+  main.innerHTML=html;
+  main.querySelectorAll(".catbar").forEach(el=>{ el.onclick=()=>{ sel={world:null,char:null,cat:el.dataset.k}; mode="browse"; setTab(); renderFileList(); }; });
+  main.querySelectorAll(".wbar").forEach(el=>{ el.onclick=()=>{ sel={world:el.dataset.k,char:null,cat:null}; mode="browse"; setTab(); renderFileList(); }; });
+}
+function bars(entries, cls){
+  if(!entries.length) return "";
+  const max=Math.max(...entries.map(e=>e[1]));
+  return entries.map(([k,v])=>{
+    const pct=(v/max*100).toFixed(1);
+    return `<div class="bar-row ${cls}" data-k="${esc(k)}">
+       <div class="bar-label" title="${esc(k)}">${esc(k)}</div>
+       <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+       <div class="bar-val">${v}</div></div>`;
+  }).join("");
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+</script>
+</body>
+</html>
