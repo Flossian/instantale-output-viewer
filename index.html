@@ -78,6 +78,14 @@
   .progress{max-width:520px;margin:14px auto 0;background:var(--panel2);border-radius:6px;height:10px;overflow:hidden}
   .progress > div{height:100%;background:var(--accent);width:0%}
   .warn{color:#ffb454}
+  #refresh{background:var(--panel2);border:1px solid var(--line);color:var(--fg)}
+  #refresh:hover{border-color:var(--accent)}
+  #refresh:disabled{opacity:.6;cursor:default}
+  .toast{position:fixed;right:18px;bottom:18px;background:var(--panel2);border:1px solid var(--accent);
+         color:var(--fg);padding:10px 16px;border-radius:8px;font-size:13px;
+         box-shadow:0 4px 18px rgba(0,0,0,.4);opacity:0;transform:translateY(8px);
+         transition:opacity .25s,transform .25s;z-index:50;pointer-events:none}
+  .toast.show{opacity:1;transform:translateY(0)}
 </style>
 </head>
 <body>
@@ -85,8 +93,10 @@
   <h1>output_data ビューア</h1>
   <span class="total" id="totalLabel"></span>
   <button class="tab active hidden" id="tabBrowse">ブラウズ</button>
+  <button class="tab hidden" id="tabTimeline">タイムライン</button>
   <button class="tab hidden" id="tabDash">ダッシュボード</button>
   <input id="search" class="hidden" placeholder="全文検索 (本文まで・絞り込み中の範囲)…">
+  <button class="btn hidden" id="refresh" title="フォルダを再選択して新規ファイルを取り込みます">🔄 更新</button>
   <button class="btn hidden" id="reopen">別フォルダを開く</button>
 </header>
 <div class="layout">
@@ -102,6 +112,8 @@ let SEARCH = new Map();       // path -> 本文の検索用テキスト(小文�
 let sel = {world:null, char:null, cat:null};
 let mode = "browse";
 let searchTimer = null;
+let timelineDesc = true;   // タイムライン: true=新しい順 / false=古い順
+let refreshing = false;    // 「更新」ボタン由来の再選択中か (表示状態を保持して差分取込)
 
 const $ = s => document.querySelector(s);
 const main = $("#main"), side = $("#side");
@@ -109,11 +121,16 @@ const main = $("#main"), side = $("#side");
 showWelcome();
 
 $("#reopen").onclick = pickFolder;
-$("#tabBrowse").onclick = ()=>{ mode="browse"; setTab(); renderMain(); };
-$("#tabDash").onclick   = ()=>{ mode="dash";   setTab(); renderMain(); };
+$("#refresh").onclick = ()=>{ refreshing = true; pickFolder(); };
+$("#tabBrowse").onclick   = ()=>{ mode="browse";   setTab(); renderMain(); };
+$("#tabTimeline").onclick = ()=>{ mode="timeline"; setTab(); renderMain(); };
+$("#tabDash").onclick     = ()=>{ mode="dash";     setTab(); renderMain(); };
 $("#search").addEventListener("input", ()=>{
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(()=>{ if(mode==="browse") renderFileList(); }, 160);
+  searchTimer = setTimeout(()=>{
+    if(mode==="browse") renderFileList();
+    else if(mode==="timeline") renderTimeline();
+  }, 160);
 });
 
 function showWelcome(){
@@ -138,11 +155,54 @@ function pickFolder(){
 
 $("#dirInput").addEventListener("change", async (e)=>{
   const files = e.target.files;
-  if(!files || !files.length) return;
+  const wasRefresh = refreshing; refreshing = false;
+  if(!files || !files.length){ if(wasRefresh) endRefreshBtn(); return; }
+
+  if(wasRefresh){
+    // 「更新」: 現在の表示状態を退避し、再走査後に復元 + 差分件数を通知
+    const prevPaths = new Set(READERS.keys());
+    const prevState = { sel:{...sel}, mode, search:$("#search").value, scroll:main.scrollTop };
+    startRefreshBtn();
+    try{ await scanFileList(files); applyRefresh(prevPaths, prevState); }
+    catch(err){ showError(err); }
+    finally{ endRefreshBtn(); }
+    return;
+  }
+
   showLoading();
   try{ await scanFileList(files); onLoaded(); }
   catch(err){ showError(err); }
 });
+
+function startRefreshBtn(){ const b=$("#refresh"); b.disabled=true; b.textContent="更新中…"; }
+function endRefreshBtn(){ const b=$("#refresh"); b.disabled=false; b.textContent="🔄 更新"; }
+
+// 再走査後: 表示状態を復元し、追加/削除された件数をトーストで通知
+function applyRefresh(prevPaths, st){
+  $("#totalLabel").textContent = MANIFEST.total.toLocaleString() + " 件";
+  sel = st.sel; mode = st.mode; $("#search").value = st.search;
+  renderTree(); setTab(); renderMain();
+  main.scrollTop = st.scroll;
+
+  let added=0; for(const p of READERS.keys()) if(!prevPaths.has(p)) added++;
+  let removed=0; for(const p of prevPaths) if(!READERS.has(p)) removed++;
+  if(added || removed){
+    const parts=[]; if(added) parts.push(`新規 ${added} 件`); if(removed) parts.push(`削除 ${removed} 件`);
+    showToast(parts.join(" / ") + " を反映しました");
+  }else{
+    showToast("変更はありませんでした");
+  }
+}
+
+let toastTimer=null;
+function showToast(msg){
+  let t=$("#toast");
+  if(!t){ t=document.createElement("div"); t.id="toast"; t.className="toast"; document.body.appendChild(t); }
+  t.textContent=msg;
+  requestAnimationFrame(()=>t.classList.add("show"));
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove("show"), 3200);
+}
 
 function showLoading(){
   main.innerHTML = `<div class="welcome"><h2>読み込み中…</h2>
@@ -162,7 +222,7 @@ async function scanFileList(fileList){
     if(!f.name.toLowerCase().endsWith(".json")) continue;
     let segs = (f.webkitRelativePath || f.name).split("/").filter(Boolean);
     if(segs.length > 1) segs = segs.slice(1); // 先頭(選択したフォルダ名)を除去
-    collected.push({segs, read: ()=>f.text()});
+    collected.push({segs, mtime: f.lastModified, read: ()=>f.text()});
   }
   await buildFromCollected(collected);
 }
@@ -200,7 +260,7 @@ async function buildFromCollected(collected){
       const w = worlds[world] || (worlds[world] = {count:0, characters:{}});
       const c = w.characters[char] || (w.characters[char] = {count:0, categories:{}});
       const ct = c.categories[cat] || (c.categories[cat] = {count:0, files:[]});
-      ct.files.push({n: fname.replace(/\.json$/i,""), path, preview});
+      ct.files.push({n: fname.replace(/\.json$/i,""), path, preview, mtime: item.mtime});
       ct.count++; c.count++; w.count++;
       categoryTotals[cat] = (categoryTotals[cat]||0) + 1;
     }));
@@ -231,13 +291,14 @@ async function buildFromCollected(collected){
 
 function onLoaded(){
   $("#totalLabel").textContent = MANIFEST.total.toLocaleString() + " 件";
-  ["#tabBrowse","#tabDash","#search","#reopen","#side"].forEach(s=>$(s).classList.remove("hidden"));
+  ["#tabBrowse","#tabTimeline","#tabDash","#search","#refresh","#reopen","#side"].forEach(s=>$(s).classList.remove("hidden"));
   sel={world:null,char:null,cat:null}; mode="browse"; setTab();
   renderTree(); renderMain();
 }
 
 function setTab(){
   $("#tabBrowse").classList.toggle("active", mode==="browse");
+  $("#tabTimeline").classList.toggle("active", mode==="timeline");
   $("#tabDash").classList.toggle("active", mode==="dash");
 }
 
@@ -269,6 +330,10 @@ function makePreview(data){
 // ----- ツリー -----
 function renderTree(){
   side.innerHTML = "";
+  // 最上部: 選択を解除して全件を表示
+  const allRow = mkRow("すべて表示", MANIFEST.total, "tw");
+  allRow.onclick = ()=>{ pick(null,null,null); };
+  side.appendChild(allRow);
   const ws = MANIFEST.worlds;
   for(const w of Object.keys(ws)){
     const wd = ws[w];
@@ -308,10 +373,14 @@ function mkRow(label,count,cls){
   const c=document.createElement("span"); c.className="cnt"; c.textContent=count;
   r.appendChild(t); r.appendChild(c); return r;
 }
-function pick(w,c,cat){ sel={world:w,char:c,cat:cat}; mode="browse"; setTab(); renderFileList(); }
+function pick(w,c,cat){ sel={world:w,char:c,cat:cat}; if(mode!=="timeline") mode="browse"; setTab(); renderMain(); }
 
 // ----- メイン -----
-function renderMain(){ if(mode==="dash"){ renderDash(); return; } renderFileList(); }
+function renderMain(){
+  if(mode==="dash"){ renderDash(); return; }
+  if(mode==="timeline"){ renderTimeline(); return; }
+  renderFileList();
+}
 
 function currentFiles(){
   const out=[]; const ws=MANIFEST.worlds;
@@ -353,6 +422,58 @@ function renderFileList(){
   }
 }
 
+// ----- タイムライン (選択範囲を更新日時順) -----
+function fmtTime(ms){
+  if(ms==null || !isFinite(ms)) return "(日時不明)";
+  const d=new Date(ms);
+  const p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function renderTimeline(){
+  let files=currentFiles();
+  const q=$("#search").value.trim().toLowerCase();
+  if(q) files=files.filter(f=>(SEARCH.get(f.path)||(f.preview||"").toLowerCase()).includes(q) || f.cat.toLowerCase().includes(q));
+  files.sort((a,b)=>{
+    const ax=a.mtime ?? 0, bx=b.mtime ?? 0;
+    return timelineDesc ? bx-ax : ax-bx;
+  });
+
+  main.innerHTML="";
+  const bar=document.createElement("div"); bar.className="crumb";
+  bar.style.cssText="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap";
+  const crumb=[sel.world||"全ワールド", sel.char, sel.cat].filter(Boolean).join(" / ");
+  const info=document.createElement("span");
+  info.innerHTML=`<b>${esc(crumb||"全件")}</b> — ${files.length} 件`+(q?` (「${esc(q)}」で絞込)`:``);
+  const sortBtn=document.createElement("button"); sortBtn.className="backbtn"; sortBtn.style.margin="0";
+  sortBtn.textContent=timelineDesc?"新しい順 ▾":"古い順 ▴";
+  sortBtn.onclick=()=>{ timelineDesc=!timelineDesc; renderTimeline(); };
+  bar.appendChild(sortBtn); bar.appendChild(info);
+  main.appendChild(bar);
+
+  if(files.length===0){
+    const p=document.createElement("p"); p.style.color="var(--muted)";
+    p.textContent="該当なし。";
+    main.appendChild(p); return;
+  }
+
+  const frag=document.createDocumentFragment();
+  for(const f of files.slice(0,2000)){
+    const el=document.createElement("div"); el.className="file";
+    el.innerHTML=`<div class="fhead">`
+      + `<span class="fid">${esc(fmtTime(f.mtime))}</span>`
+      + `<span>${esc(f.cat)}</span>`
+      + `<span>· ${esc(f.world)}/${esc(f.char)}/#${esc(f.n)}</span>`
+      + `</div><div class="fprev">${esc(f.preview||"(プレビュー無し)")}</div>`;
+    el.onclick=()=>openFile(f); frag.appendChild(el);
+  }
+  main.appendChild(frag);
+  if(files.length>2000){
+    const more=document.createElement("p"); more.style.color="var(--muted)";
+    more.textContent=`… 先頭2000件のみ表示 (全${files.length}件)。検索で絞り込んでください。`;
+    main.appendChild(more);
+  }
+}
+
 async function openFile(f){
   const read = READERS.get(f.path);
   if(!read){ main.innerHTML=`<p class="warn">ファイルが見つかりません</p>`; return; }
@@ -366,7 +487,7 @@ function renderDetail(f,data){
   main.innerHTML="";
   const bar=document.createElement("div"); bar.style.cssText="display:flex;gap:8px;flex-wrap:wrap;align-items:center";
   const back=document.createElement("button"); back.className="backbtn"; back.textContent="← 一覧へ戻る";
-  back.onclick=renderFileList; back.style.margin="0";
+  back.onclick=renderMain; back.style.margin="0";
   const toggleAll=document.createElement("button"); toggleAll.className="backbtn"; toggleAll.style.margin="0";
   toggleAll.textContent="全て展開";
   bar.appendChild(back); bar.appendChild(toggleAll);
