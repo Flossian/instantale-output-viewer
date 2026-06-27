@@ -1,5 +1,7 @@
 # Instantale Output Viewer
 
+https://flossian.github.io/instantale-output-viewer/
+
 ゲーム『Instantale』が出力する `output_data` フォルダ内の JSON
 （LLM の入出力ログ）を、ブラウザ上で**分類・閲覧・検索**するためのビューアです。
 
